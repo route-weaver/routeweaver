@@ -342,6 +342,8 @@ body.tur-int #turCur{opacity:0}
 .nd.linktgt{border-color:#7aa2ff!important;box-shadow:0 0 0 3px rgba(122,162,255,.4),0 6px 18px rgba(0,0,0,.4)!important}
 .nd.linktgt .pt{opacity:1!important}
 .nd.linktgt .fln{opacity:1!important}
+.nd.aw{min-width:0;max-width:none}
+.nd.aw .nt{white-space:pre;word-break:normal}
 @media (max-width:760px),(pointer:coarse){
  button.b{height:38px;padding:0 12px;font-size:13.5px}
  .nd{font-size:14.5px;padding:12px 14px}
@@ -674,7 +676,7 @@ function rbId(ed){return 'rb'+hashS(ed.id)}
 function shapeCls(n){const s=(n&&n.shape)||'rect';return s==='rect'?'':' sh-'+s}
 function isShaped(n){const s=(n&&n.shape)||'rect';return s==='diamond'||s==='triangle'}
 function zCls(n){if(!n)return'';if(n.z==='top')return' zTop';if(n.z==='bottom')return' zBottom';if(n.bgimg)return' bgimg';return''}
-function clsOf(n){const t=(n&&n.type)||'box';return 'nd nd-'+t+(t==='ending'?' et-'+((n&&n.endingType)||'normal'):'')+shapeCls(n)+zCls(n)}
+function clsOf(n){const t=(n&&n.type)||'box';return 'nd nd-'+t+(t==='ending'?' et-'+((n&&n.endingType)||'normal'):'')+shapeCls(n)+zCls(n)+((n&&n.autow&&t!=='image')?' aw':'')}
 function docVar(k){try{return getComputedStyle(document.documentElement).getPropertyValue(k).trim()||''}catch(_){return''}}
 function applyNodeText(n){
  const e=els.get(n.id);if(!e)return;
@@ -688,7 +690,8 @@ function applyNodeText(n){
  }
  const col=n.fc||(n.color?txtColor(n.color):'');
  if(col)e.style.color=col;else e.style.removeProperty('color');
- if(n.fs&&n.fs!==13.5)e.style.minWidth=Math.round(130*n.fs/13.5)+'px';
+ if(n.autow)e.style.removeProperty('min-width');
+ else if(n.fs&&n.fs!==13.5)e.style.minWidth=Math.round(130*n.fs/13.5)+'px';
  else e.style.removeProperty('min-width');
 }
 function applyNodeStyle(n){
@@ -713,6 +716,27 @@ function applyNodeStyle(n){
   e.style.background=n.color||'';
  }
  applyNodeText(n);
+ applyNodeWidth(n,e);
+}
+/* ---------- 节点宽度（固定宽度 / 跟随文字） ---------- */
+function applyNodeWidth(n,e0){
+ const e=e0||els.get(n.id);if(!e)return;
+ const t=(n&&n.type)||'box';
+ if(n&&n.autow&&t!=='image'){
+  e.classList.add('aw');
+  e.style.removeProperty('width');
+  e.style.removeProperty('min-width');
+  e.style.removeProperty('max-width');
+ }else{
+  e.classList.remove('aw');
+  if(n&&n.w){
+   e.style.width=n.w+'px';
+   e.style.maxWidth=n.w+'px';
+  }else{
+   e.style.width='';
+   e.style.removeProperty('max-width');
+  }
+ }
 }
 /* ---------- 尺寸缓存 ---------- */
 function measureAllSoon(){if(szT)return;szT=requestAnimationFrame(()=>{szT=null;SZ.clear();els.forEach((e,id)=>{SZ.set(id,{w:e.offsetWidth,h:e.offsetHeight})})})}
@@ -1807,8 +1831,25 @@ function batchSetShape(nids,s){
  measureAllSoon();renderE();commit();
 }
 function batchSetWidth(nids,w){
- nids.forEach(id=>{const n=getN(id);if(n){n.w=w||null;refreshNodeEl(n)}});
+ nids.forEach(id=>{
+  const n=getN(id);if(!n)return;
+  delete n.autow;
+  n.w=w||null;
+  refreshNodeEl(n);
+ });
  measureAllSoon();renderE();commit();
+}
+function batchSetAutow(nids,on){
+ let k=0;
+ nids.forEach(id=>{
+  const n=getN(id);if(!n)return;
+  if((n.type||'box')==='image')return;
+  if(on)n.autow=true;else delete n.autow;
+  refreshNodeEl(n);k++;
+ });
+ measureAllSoon();renderE();commit();
+ if(!k){toast('图片节点的宽度请用固定像素值（不支持跟随文字）');return}
+ toast(on?('已开启「宽度跟随文字（不换行）」：'+k+' 个节点'):('已恢复按固定宽度换行：'+k+' 个节点'));
 }
 function batchSetFs(nids,fs){
  nids.forEach(id=>{
@@ -1824,7 +1865,7 @@ function scaleNodes(nids,k){
   const n=getN(id);if(!n)return;
   n.fs=Math.max(8,Math.min(36,Math.round((n.fs||13.5)*k*10)/10));
   if(n.fs===13.5)n.fs=null;
-  if(n.w)n.w=Math.max(90,Math.min(520,Math.round(n.w*k)));
+  if(n.w&&!n.autow)n.w=Math.max(90,Math.min(520,Math.round(n.w*k)));
   refreshNodeEl(n);
  });
  measureAllSoon();renderE();commit();
@@ -1840,7 +1881,7 @@ function toggleEdgeFlag(eids,key){
 }
 /* ---------- 节点样式复制 / 粘贴（格式刷） ---------- */
 function copyNodeStyle(n){
- clipStyle={color:n.color||null,shape:n.shape||null,fs:n.fs||null,font:n.font||null,bold:!!n.bold,italic:!!n.italic,fc:n.fc||null,align:n.align||null,w:n.w||null};
+ clipStyle={color:n.color||null,shape:n.shape||null,fs:n.fs||null,font:n.font||null,bold:!!n.bold,italic:!!n.italic,fc:n.fc||null,align:n.align||null,w:n.w||null,autow:!!n.autow};
  toast('已复制节点样式：到别的节点右键 →「🖌 粘贴样式到本节点」');
 }
 function pasteStyleTo(n){
@@ -1849,6 +1890,7 @@ function pasteStyleTo(n){
  n.fc=clipStyle.fc;n.align=clipStyle.align;n.w=clipStyle.w;
  if(clipStyle.bold)n.bold=true;else delete n.bold;
  if(clipStyle.italic)n.italic=true;else delete n.italic;
+ if(clipStyle.autow)n.autow=true;else delete n.autow;
  ['color','shape','fs','font','fc','align','w'].forEach(k=>{if(n[k]==null)delete n[k]});
  refreshNodeEl(n);
 }
@@ -3983,6 +4025,7 @@ const KEYS=[
  ['右键节点 → 🔤 文字','字体 / 字号 / 颜色 / 加粗 / 斜体'],
  ['右键节点 → 📐 文字对齐','靠左 / 居中 / 靠右 / 跟随默认'],
  ['右键节点 → 🔍 大小','放大 / 缩小 / 重置'],
+ ['右键节点 → 📏 节点宽度','更多预设（100~360px）与自定义像素（60–1000）；勾选「宽度跟随文字（不换行）」后框会随文字长度自动变长、永不换行（多行文字按最长行定宽），再点一次取消恢复固定宽度换行'],
  ['右键节点 → 🔢 变量','节点也能挂变量（到达时生效）'],
  ['右键连线 → ➤ 箭头','单箭头 / 双箭头 / 无箭头'],
  ['右键连线 → ┅ 线型','实线 / 虚线 / 点线'],
@@ -4183,13 +4226,34 @@ function menuShapeMulti(x,y,nids){
  openM(x,y,SHAPES.map(k=>({label:((nids.length===1&&cur===k[0])?'✓ ':'')+k[1],keep:true,fn:()=>batchSetShape(nids,k[0])})));
 }
 function menuWidthMulti(x,y,nids){
- const set=w=>batchSetWidth(nids,w);
+ const n0=getN(nids[0])||{};
+ const canAuto=(n0.type||'box')!=='image';
+ const wrow=document.createElement('label');wrow.className='pr';wrow.style.cursor='pointer';
+ const wt=document.createElement('span');wt.textContent='宽度跟随文字（不换行，随文字变长）';
+ const wcb=document.createElement('input');wcb.type='checkbox';
+ wcb.checked=!!n0.autow&&canAuto;
+ if(!canAuto)wcb.disabled=true;
+ wcb.onchange=()=>{batchSetAutow(nids,wcb.checked)};
+ wrow.appendChild(wt);wrow.appendChild(wcb);
+ const set=w=>{wcb.checked=false;batchSetWidth(nids,w)};
  openM(x,y,[
-  {label:'自动（随内容）',keep:true,fn:()=>set(null)},
+  {el:wrow},
+  {sep:true},
+  {label:'默认（自动换行）',keep:true,fn:()=>set(null)},
+  {label:'100 px',keep:true,fn:()=>set(100)},
   {label:'130 px',keep:true,fn:()=>set(130)},
-  {label:'180 px',keep:true,fn:()=>set(180)},
+  {label:'160 px',keep:true,fn:()=>set(160)},
+  {label:'200 px',keep:true,fn:()=>set(200)},
   {label:'240 px',keep:true,fn:()=>set(240)},
-  {label:'320 px',keep:true,fn:()=>set(320)}
+  {label:'300 px',keep:true,fn:()=>set(300)},
+  {label:'360 px',keep:true,fn:()=>set(360)},
+  {label:'自定义…',fn:()=>{
+   const s=prompt('节点宽度（px，60–1000）：',String(n0.w||130));
+   if(s===null)return;
+   const v=parseFloat(s);
+   if(isNaN(v)){toast('请输入数字');return}
+   set(Math.max(60,Math.min(1000,Math.round(v))));
+  }}
  ]);
 }
 function menuSizeMulti(x,y,nids){
@@ -4374,7 +4438,7 @@ function menuN(x,y,n){
   {label:n.type==='image'?'🖼️ 替换图片':'🖼️ 添加图片',fn:()=>pickImg(n)},
   {label:'🔗 超链接：'+(n.link?'已设 ▸':'未设 ▸'),fn:()=>menuLink(x,y,n)},
   {label:'🎨 节点颜色 ▸',fn:()=>menuColorMulti(x,y,[id])},
-  {label:'📏 节点宽度 ▸',fn:()=>menuWidthMulti(x,y,[id])},
+  {label:'📏 节点宽度：'+(n.autow?'跟随文字':(n.w?(n.w+'px'):'默认'))+' ▸',fn:()=>menuWidthMulti(x,y,[id])},
   {label:'🔤 文字（字体/字号/颜色）▸',fn:()=>menuTextMulti(x,y,[id])},
   {label:'🔍 大小（放大/缩小）▸',fn:()=>menuSizeMulti(x,y,[id])},
   {label:'🔀 切换类型 ▸',fn:()=>menuTypeMulti(x,y,[id])},
